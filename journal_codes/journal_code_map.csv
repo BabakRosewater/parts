@@ -1,0 +1,11 @@
+journal_code,label,meaning,inventory_direction,confidence,notes
+POT,Parts Purchases/Receipts,Parts inventory received (PO/vendor invoice/receiving),IN,tentative,Confirm by checking if Document/Reference look like vendor invoice/PO receipt
+PCA,Parts Cost Adjustment,Cost/value adjustment to parts inventory,MIXED,tentative,Often corrections to inventory value
+PCC,Parts Cost Correction,Correction of a prior cost posting,MIXED,tentative,Typically smaller true-ups than PCA
+CRC,Core Return Credit / Credit Return Correction,Vendor credit/return activity (often cores/returns),OUT,tentative,Look for CORE/RETURN/CREDIT keywords in descriptions
+GJE,General Journal Entry,Manual or accounting-side entry touching 2420,MIXED,tentative,Often less “part-item” looking descriptions
+CDH,Cash Disbursement / Clearing,Payment/clearing-related batch impacting 2420,MIXED,tentative,System-specific; confirm by looking for batch/payment style references
+EFT,Electronic Funds Transfer,Electronic payment/settlement batch impacting 2420,MIXED,tentative,Normally AP/cash—if in 2420 it's usually reclass/clearing-related
+SCA,Stock/Cost Adjustment,Inventory adjustment/reclass/write-off/cycle-count,MIXED,tentative,Often corrections, write-offs, reclasses
+SVI,Service Issue/Invoice,Parts issued to service work / RO consumption,OUT,tentative,Confirm by RO-like patterns or service-related references
+SWA,Special/Warranty/Write-off Adjustment,Adjustment bucket (warranty/write-off/swap/etc.),MIXED,tentative,System-specific—confirm by typical descriptions and document patterns
