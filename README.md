@@ -1,474 +1,246 @@
-Parts Inventory Dashboard (GL 2420)
+````md
+# Parts Inventory Dashboard (GL 2420)
 
-A client-side (no backend) dashboard that loads multiple CSV sources from the public BabakRosewater/parts GitHub repo, applies filters, and renders summaries + tables across multiple tabs:
+A **client-side** (no backend) dashboard for Parts / GL 2420 analytics. It loads CSVs from the public `BabakRosewater/parts` repo via GitHub RAW, applies filters, and renders charts + tables across multiple tabs.
 
-Overview (Net by Month chart + Journal Summary)
+**Tabs**
+- Overview (Net by Month chart + Journal Summary)
+- Vendor Spend (group_control aggregation)
+- Reconciler (detail vs totals validation)
+- Document / RO Tracking (heuristic grouping)
+- Counter Pad (on-hand snapshot)
+- Aging (2025 inventory aging snapshot)
 
-Vendor Spend (group_control aggregation)
+---
 
-Reconciler (detail vs totals validation)
+## Tech Stack (CDN)
+- TailwindCSS (layout + utilities)
+- PapaParse (CSV fetch + parse)
+- Chart.js (line chart)
 
-Document / RO Tracking (heuristic grouping)
-
-Counter Pad (on-hand snapshot)
-
-Aging (2025 inventory aging snapshot)
-
-Everything runs in the browser using CDN libraries.
-
-1) Runtime Dependencies (CDN)
-
-Included directly in the HTML (no CodePen settings required):
-
-TailwindCSS (layout + utility classes)
-
-PapaParse (CSV fetch + parse)
-
-Chart.js (Net by Month line chart)
-
+Included in HTML:
+```html
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+````
 
-2) Data Sources (GitHub RAW)
+---
 
-All datasets are loaded from GitHub RAW URLs using a “first working” fallback list.
+## Data Sources (GitHub RAW)
 
-Source files
+The app loads four CSVs (with fallback URL candidates):
 
-PARTS_INVENTORY_normalized_detail.csv
+1. **Transactions (detail)**
 
-“Transaction detail” (GL activity rows)
+   * `PARTS_INVENTORY_normalized_detail.csv`
 
-PARTS_INVENTORY_group_totals.csv
+2. **Audit totals**
 
-Audit totals per group_control (used for reconciliation)
+   * `PARTS_INVENTORY_group_totals.csv`
 
-Counter_Pad.csv
+3. **Counter Pad snapshot**
 
-Snapshot of on-hand by part/bin (counter screen)
+   * `Counter_Pad.csv`
 
-Inventory_Aging_Report_2025.csv
+4. **Inventory Aging snapshot (2025)**
 
-Snapshot of aging (months since sale/receipt, excess, etc.)
+   * `Inventory_Aging_Report_2025.csv`
 
-URL configuration (JS)
-const URLS = {
-  detail: [...],
-  totals: [...],
-  counter: [...],
-  aging: [...]
-};
+Configured in JS:
 
+```js
+const URLS = { detail:[...], totals:[...], counter:[...], aging:[...] };
+```
 
 Loading uses:
 
-parseCSV(url) → PapaParse download+parse
+* `parseCSV(url)` → PapaParse download+parse
+* `loadFirstWorking(candidates)` → tries URLs until one succeeds
 
-loadFirstWorking(candidates) → tries candidates in order
+---
 
-3) UI Structure (HTML)
+## How Filtering Works
 
-The UI is divided into:
+### Main filters (Detail-driven tabs)
 
-A) Header + Filters
+Controls:
 
-Status line: #statusLine
+* `Start date` (`#fStart`)
+* `End date` (`#fEnd`)
+* `Journal` (`#fJournal`)
+* `Search` (`#fSearch`)
 
-Filters:
+Applies to:
 
-#fStart (date)
+* Overview, Vendor Spend, Reconciler, Docs/RO Tracking
 
-#fEnd (date)
+Search matches:
 
-#fJournal (select)
+* `group_control`, `group_header_desc`, `line_description`, `document`, `reference`, `journal`, `date`
 
-#fSearch (text search)
+**Important:** detail `date` is assumed to be `YYYY-MM-DD` for string comparisons.
 
-#btnReset (resets all controls)
+### Snapshot tabs (Counter Pad + Aging)
 
-Important behavior
+* Still use the **main Search** box (`#fSearch`)
+* **Date + Journal are disabled** automatically (snapshots are not transaction-dated)
 
-Date + journal filters apply only to the “detail-driven” tabs:
+Counter Pad additional filters:
 
-Overview, Vendor Spend, Reconciler, Docs
+* Group (`#cpGroup`), Status (`#cpStatus`), Sort (`#cpSort`), Limit (`#cpLimit`), O/H > 0 (`#cpOnHandOnly`)
 
-Date + journal filters are disabled on snapshot tabs:
+Aging additional filters:
 
-Counter Pad, Aging
-(because those sources are snapshots, not dated transaction rows)
+* Stocking Group (`#agStockingGroup`), Status (`#agStatus`), Bucket (`#agBucket`)
+* Sort (`#agSort`), Limit (`#agLimit`)
+* Excess only (`#agExcessOnly`), O/H > 0 (`#agOnHandOnly`)
 
-B) Tabs
+---
 
-Buttons with data-tab:
+## Reconciler (What it validates)
 
-overview
+Compares:
 
-vendors
+* Vendor/control totals computed from **filtered detail**
+  vs
+* Totals from `PARTS_INVENTORY_group_totals.csv`
 
-reconcile
+Key:
 
-docs
+* `group_control`
 
-counter
+Tolerance:
 
-aging
+* ± `$0.01`
 
-Panels with IDs:
+Outputs mismatches:
 
-#tab-overview
+* Δ Debit, Δ Credit, Δ Net (sorted by |Δ Net|)
 
-#tab-vendors
+---
 
-#tab-reconcile
+## Document / RO Tracking (Heuristic)
 
-#tab-docs
+Groups filtered detail rows by “RO-like” keys extracted from:
 
-#tab-counter
+* `document`, `reference`, and `line_description`
 
-#tab-aging
+Rules:
 
-C) KPI Row
+1. If matches `RO` + 4–8 digits → `RO ######`
+2. Else if any 5–8 digit number → `DOC ######`
+3. Else → `UNCLASSIFIED`
 
-Four KPI boxes updated depending on the active tab:
+Then aggregates debit/credit/net per key.
 
-Detail tabs: Transactions / Debit / Credit / Net
+---
 
-Counter tab: Lines / On-Hand Units / ExtCost / List Value
+## KPIs (Top Row)
 
-Aging tab: Lines / On-Hand Units / ExtCost / Excess Value
+KPIs change based on active tab:
 
-IDs:
+### Detail tabs
 
-Labels: #kpiLabel1..4
+* Transactions
+* Total Debit
+* Total Credit
+* Net
 
-Values: #kpiTx #kpiDebit #kpiCredit #kpiNet
+### Counter Pad
 
-D) Tab-Specific Controls
+* Lines
+* On-Hand Units
+* Total ExtCost
+* Total List Value (`list * onHand`)
 
-Vendor Spend
+### Aging
 
-#vendorSort, #vendorLimit
+* Lines
+* On-Hand Units
+* Total ExtCost
+* Excess Value
 
-Docs
+---
 
-#docLimit
+## Expected CSV Columns
 
-Counter
+### `PARTS_INVENTORY_normalized_detail.csv`
 
-#cpGroup, #cpStatus, #cpSort, #cpLimit, #cpOnHandOnly
+Used fields:
 
-Aging
+* `date` (expected `YYYY-MM-DD`)
+* `journal`
+* `debit`, `credit`, `net`
+* `group_control`, `group_header_desc`
+* `line_description`, `document`, `reference`
 
-#agStockingGroup, #agStatus, #agBucket, #agSort, #agLimit
+### `PARTS_INVENTORY_group_totals.csv`
 
-#agExcessOnly, #agOnHandOnly
+Used fields:
 
-4) Styling (CSS)
+* `group_control`
+* `total_debit`, `total_credit`, `total_net`
 
-The CSS provides a consistent “dark UI” theme with soft borders and readable inputs.
+### `Counter_Pad.csv`
 
-Key goals:
+Used columns:
 
-Stable dark theme and contrast
+* `Part/Description` (parsed into `partNo` + `desc` using `" : "`)
+* `MF`, `Grp`, `Sts`, `OEM`, `Bin/Shelf`
+* `O/H`, `Cost`, `List`, `ExtCost`
+* (optional) `O/O`, `B/O`, `Core`, `Trade`
 
-More readable dropdown lists on Edge/Windows 11
+### `Inventory_Aging_Report_2025.csv`
 
-Prevent Chart.js “infinite resize” issues
+Used columns:
 
-Theme variables
-:root{
-  --bg: #0b1220;
-  --card:#0f1a2e;
-  --text:#e9eef9;
-  --border: rgba(255,255,255,0.10);
-  --pill: rgba(255,255,255,0.05);
-  --dot: #5eead4;
-  color-scheme: dark;
-}
+* `PartNumber`, `Description`, `Status`
+* `BinLocation`, `Shelf`, `StockingGroup`
+* `MonthsNoSale`, `MonthsNoReceipt`
+* `OnHand`, `ExtCost`, `ExcessQty`, `ExcessValue`
+* `LastSaleDate`, `LastReceiptDate`, `InInventoryDate` (MDY → ISO conversion)
+* (optional) `GroupCode`, `StockCode`, `ReturnCode`
 
-Dropdown readability fix (Edge/Win11)
+If headers change, update the mapping in the JS loader section.
 
-Edge often renders the dropdown popup menu as light. We force option text to dark for readability:
+---
 
-select.ui-input option,
-select.ui-input optgroup{
-  color: #0b1220;
-  background-color: #ffffff;
-}
+## Chart.js Sizing Note (Prevents Resize Loops)
 
-Chart sizing
+The Net-by-Month chart uses a fixed-height wrapper:
 
-A fixed-height wrapper prevents reflow loops:
+* `.chart-wrap { height: 260px; }`
+* Chart options: `maintainAspectRatio: false`, `animation: false`
 
-.chart-wrap{
-  position: relative;
-  width: 100%;
-  height: 260px;
-  overflow: hidden;
-}
-#monthChart{
-  display: block;
-  width: 100%;
-  height: 100%;
-}
+This prevents “infinite growth” resize loops in some layouts.
 
-5) JavaScript Architecture
+---
 
-The JS is organized into the following functional areas:
+## Local Editing / Troubleshooting
 
-A) State container
+**If you see “Load failed”:**
 
-All app state is stored in one object:
+* Verify GitHub RAW URLs are correct
+* Ensure repo + files are public
+* Confirm file names match exactly
+* Confirm CSV headers expected by the JS mapping
 
-const state = {
-  activeTab: "overview",
-  detail: [], totals: [], filtered: [], journals: [],
-  counter: [], counterFiltered: [], counterGroups: [], counterStatuses: [],
-  aging: [], agingFiltered: [],
-  monthChart: null,
-  debounceTimer: null,
-};
+**If dates filter incorrectly:**
 
-B) Parsing + loading
+* Detail date must be `YYYY-MM-DD`
+* Aging MDY dates are converted by `parseMDYDateString()`
 
-parseCSV(url) uses PapaParse with:
+---
 
-header: true
+## Roadmap Ideas
 
-dynamicTyping: true
+* Add export (filtered table CSV)
+* Add “click-through” drilldowns (Vendor → transactions)
+* Add saved views (persist filters in URL params)
+* Add custom “RO classifier” rules per store conventions
 
-skipEmptyLines: true
+```
 
-loadFirstWorking([...urls]) tries sequential URLs
-
-C) Filters
-
-Main filters (detail tabs):
-
-readMainFilters() returns {start,end,journal,search}
-
-rowMatchesDetail(row, f) applies:
-
-date range comparisons (row.date must already be YYYY-MM-DD)
-
-journal matching
-
-search across multiple fields
-
-applyDetailFilters() populates state.filtered
-
-Counter filters (snapshot):
-
-applyCounterFilters() uses:
-
-group/status selects
-
-on-hand-only checkbox
-
-main search box (#fSearch) across part/bin/etc.
-
-Aging filters (snapshot):
-
-applyAgingFilters() uses:
-
-stockingGroup/status/bucket
-
-excessOnly + onHandOnly toggles
-
-main search box across part/bin/status codes
-
-Bucketing logic:
-
-inAgingBucket(monthsNoSale, bucket)
-
-D) Normalization / Mapping
-
-Because CSV headers differ per file, the loader maps raw columns into consistent JS object shapes.
-
-Counter Pad normalization
-
-parsePartDesc("PARTNO : DESC") → { partNo, desc }
-
-Produces fields like:
-
-partNo, desc, grp, sts, bin, onHand, cost, list, extCost
-
-Aging normalization
-Maps CSV headers into canonical keys:
-
-partNumber, description, status, bin, shelf, stockingGroup
-
-monthsNoSale, monthsNoReceipt
-
-onHand, extCost, excessQty, excessValue
-
-Date fields are converted from M/D/YYYY to YYYY-MM-DD:
-
-parseMDYDateString()
-
-E) Aggregations
-
-sumDetail(rows) → debit/credit/net/count
-
-sumCounter(rows) → onHand/extCost/listValue/count
-
-sumAging(rows) → onHand/extCost/excessValue/count
-
-aggByJournal(detailFiltered)
-
-aggByVendor(detailFiltered)
-
-aggNetByMonth(detailFiltered)
-
-F) Reconciler
-
-Compares detail-derived vendor totals against the audit totals file:
-
-buildTotalsMap(state.totals)
-
-reconcile(vendorAgg, totalsMap) with tolerance ±$0.01
-Outputs mismatch rows {control, dDebit, dCredit, dNet}.
-
-G) Document / RO tracking (heuristic)
-
-Extracts likely RO/document keys from text:
-
-Looks for “RO ######”
-
-Else falls back to 5–8 digit sequences
-
-Else “UNCLASSIFIED”
-Then aggregates debit/credit/net by extracted key.
-
-H) Rendering
-
-Each panel has a renderer:
-
-renderKPIs()
-
-renderJournalTable()
-
-renderMonthChart() (Chart.js line)
-
-renderVendorTable()
-
-renderReconciler()
-
-renderDocTable()
-
-renderCounterTable()
-
-renderAgingTable()
-
-Chart safety
-ensureChartContainerHeight() guards against a missing height that can cause Chart.js resize loops in some layouts.
-
-I) Tabs + events
-
-setTab(name) switches active tab, toggles .is-active, hides/shows panels, disables date/journal on snapshot tabs.
-
-wireUI() binds all filters + tab clicks to scheduleRecalc()
-
-scheduleRecalc() debounces to avoid re-rendering on every keystroke.
-
-J) Recalc pipeline
-
-recalcAndRender() is the single “update loop”:
-
-apply filters (detail/counter/aging)
-
-render KPIs
-
-render all panels (safe even if hidden)
-
-update status line based on active tab
-
-6) Expected CSV Field Assumptions
-
-These are important for stability:
-
-Detail (normalized_detail)
-
-Expected fields used by code:
-
-date (assumed YYYY-MM-DD)
-
-journal
-
-debit, credit, net
-
-group_control, group_header_desc
-
-line_description, document, reference
-
-Totals (group_totals)
-
-group_control
-
-total_debit, total_credit, total_net
-
-Counter Pad (Counter_Pad.csv)
-
-Columns referenced:
-
-Part/Description, O/H, Cost, List, ExtCost
-
-MF, Grp, Sts, OEM, Bin/Shelf
-
-(optional) O/O, B/O, Core, Trade
-
-Aging (Inventory_Aging_Report_2025.csv)
-
-Columns mapped (case-sensitive as in code):
-
-PartNumber, Description, Status
-
-BinLocation, Shelf, StockingGroup
-
-MonthsNoSale, MonthsNoReceipt
-
-OnHand, ExtCost, ExcessQty, ExcessValue
-
-LastSaleDate, LastReceiptDate, InInventoryDate
-
-plus optional codes: GroupCode, StockCode, ReturnCode
-
-If a CSV header changes, the dashboard will load but filters/columns may go blank until the mapping is updated.
-
-7) How to Extend Safely
-
-Common extension pattern:
-
-Add UI controls in HTML (new select/checkbox)
-
-Add state fields if needed
-
-Bind events in wireUI()
-
-Update filter function (applyXFilters)
-
-Update renderer (renderXTable + meta)
-
-Ensure the new renderer is called in recalcAndRender()
-
-8) Known Browser/UI Constraints
-
-Native <select> dropdown popup styling is limited (especially on Windows).
-The CSS improves readability but cannot fully theme the popup in all browsers.
-
-Chart.js requires a stable container height; we already enforce a fixed-height wrapper.
-
-9) Quick Developer Checklist
-
-✅ All required HTML IDs exist (tables, metas, selects)
-
-✅ CSV URLs are public and correct
-
-✅ Detail date format is YYYY-MM-DD
-
-✅ Aging date strings are M/D/YYYY (or compatible)
-
-✅ Recalc runs after tab switch + filter changes
-
-✅ Status line updates by active tab
+::contentReference[oaicite:0]{index=0}
+```
